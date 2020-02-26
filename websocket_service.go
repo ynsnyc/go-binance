@@ -30,7 +30,7 @@ type WsPartialDepthHandler func(event *WsPartialDepthEvent)
 
 // WsPartialDepthServe serve websocket partial depth handler with a symbol
 func WsPartialDepthServe(symbol string, levels string, handler WsPartialDepthHandler, errHandler ErrHandler) (doneC, stopC chan struct{}, err error) {
-	endpoint := fmt.Sprintf("%s/%s@depth%s", baseURL, strings.ToLower(symbol), levels)
+	endpoint := fmt.Sprintf("%s/%s@depth%s@100ms", baseURL, strings.ToLower(symbol), levels)
 	cfg := newWsConfig(endpoint)
 	wsHandler := func(message []byte) {
 		j, err := newJSON(message)
@@ -68,7 +68,7 @@ func WsPartialDepthServe(symbol string, levels string, handler WsPartialDepthHan
 func WsCombinedPartialDepthServe(symbolLevels map[string]string, handler WsPartialDepthHandler, errHandler ErrHandler) (doneC, stopC chan struct{}, err error) {
 	endpoint := combinedBaseURL
 	for s, l := range symbolLevels {
-		endpoint += fmt.Sprintf("%s@depth%s", strings.ToLower(s), l) + "/"
+		endpoint += fmt.Sprintf("%s@depth%s@100ms", strings.ToLower(s), l) + "/"
 	}
 	endpoint = endpoint[:len(endpoint)-1]
 	cfg := newWsConfig(endpoint)
@@ -113,7 +113,7 @@ type WsDepthHandler func(event *WsDepthEvent)
 
 // WsDepthServe serve websocket depth handler with a symbol
 func WsDepthServe(symbol string, handler WsDepthHandler, errHandler ErrHandler) (doneC, stopC chan struct{}, err error) {
-	endpoint := fmt.Sprintf("%s/%s@depth", baseURL, strings.ToLower(symbol))
+	endpoint := fmt.Sprintf("%s/%s@depth@100ms", baseURL, strings.ToLower(symbol))
 	cfg := newWsConfig(endpoint)
 	wsHandler := func(message []byte) {
 		j, err := newJSON(message)
@@ -261,6 +261,27 @@ func WsTradeServe(symbol string, handler WsTradeHandler, errHandler ErrHandler) 
 	return wsServe(cfg, wsHandler, errHandler)
 }
 
+// WsTradeServe serve websocket handler with an array of symbols
+func WsCombinedTradeServe(symbols []string, handler WsTradeHandler, errHandler ErrHandler) (doneC, stopC chan struct{}, err error) {
+	endpoint := combinedBaseURL
+	for _, symbol := range symbols {
+		endpoint += fmt.Sprintf("%s@trade", strings.ToLower(symbol)) + "/"
+	}
+	endpoint = endpoint[:len(endpoint)-1]
+	cfg := newWsConfig(endpoint)
+	wsHandler := func(message []byte) {
+		combinedEvent := new(WsCombinedTradeEvent)
+		err := json.Unmarshal(message, combinedEvent)
+		event := &combinedEvent.Data
+		if err != nil {
+			errHandler(err)
+			return
+		}
+		handler(event)
+	}
+	return wsServe(cfg, wsHandler, errHandler)
+}
+
 // WsTradeEvent define websocket trade event
 type WsTradeEvent struct {
 	Event         string `json:"e"`
@@ -274,6 +295,11 @@ type WsTradeEvent struct {
 	TradeTime     int64  `json:"T"`
 	IsBuyerMaker  bool   `json:"m"`
 	Placeholder   bool   `json:"M"` // add this field to avoid case insensitive unmarshaling
+}
+
+type WsCombinedTradeEvent struct {
+	Data   WsTradeEvent `json:data`
+	Stream string       `json:stream`
 }
 
 // WsUserDataServe serve user data handler with listen key
